@@ -1,0 +1,129 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>WebSocket Test</title>
+    <style>
+        body { font-family: Arial, sans-serif; max-width: 800px; margin: 0 auto; padding: 20px; }
+        #output { 
+            height: 300px; 
+            border: 1px solid #ccc; 
+            padding: 10px; 
+            margin: 10px 0; 
+            overflow-y: auto;
+            background-color: #f9f9f9;
+        }
+        button { 
+            padding: 8px 16px; 
+            margin-right: 10px; 
+            background-color: #4CAF50; 
+            color: white; 
+            border: none; 
+            border-radius: 4px; 
+            cursor: pointer;
+        }
+        button:disabled { 
+            background-color: #cccccc; 
+            cursor: not-allowed;
+        }
+        .status { margin: 10px 0; padding: 10px; border-radius: 4px; }
+        .connected { background-color: #dff0d8; color: #3c763d; }
+        .disconnected { background-color: #f2dede; color: #a94442; }
+    </style>
+</head>
+<body>
+    <h1>WebSocket Test</h1>
+    
+    <div>
+        <button id="connectBtn">Connect</button>
+        <button id="disconnectBtn" disabled>Disconnect</button>
+        <button id="sendBtn" disabled>Send Test Message</button>
+    </div>
+    
+    <div id="status" class="status disconnected">Status: Disconnected</div>
+    
+    <div>
+        <h3>Messages:</h3>
+        <div id="output"></div>
+    </div>
+
+    <script>
+        let socket;
+        const statusDiv = document.getElementById('status');
+        const outputDiv = document.getElementById('output');
+        const connectBtn = document.getElementById('connectBtn');
+        const disconnectBtn = document.getElementById('disconnectBtn');
+        const sendBtn = document.getElementById('sendBtn');
+
+        function log(message) {
+            const p = document.createElement('p');
+            p.textContent = `${new Date().toLocaleTimeString()}: ${message}`;
+            outputDiv.appendChild(p);
+            outputDiv.scrollTop = outputDiv.scrollHeight;
+        }
+
+        function updateUI(connected) {
+            if (connected) {
+                statusDiv.textContent = 'Status: Connected';
+                statusDiv.className = 'status connected';
+                connectBtn.disabled = true;
+                disconnectBtn.disabled = false;
+                sendBtn.disabled = false;
+            } else {
+                statusDiv.textContent = 'Status: Disconnected';
+                statusDiv.className = 'status disconnected';
+                connectBtn.disabled = false;
+                disconnectBtn.disabled = true;
+                sendBtn.disabled = true;
+            }
+        }
+
+        function connect() {
+            log('Connecting to WebSocket server...');
+            socket = new WebSocket('ws://localhost:4000/ws');
+
+            socket.onopen = function() {
+                log('Connected to WebSocket server');
+                updateUI(true);
+            };
+
+            socket.onmessage = function(event) {
+                log(`Received: ${event.data}`);
+            };
+
+            socket.onclose = function(event) {
+                log(`Disconnected: ${event.code} ${event.reason || 'No reason provided'}`);
+                updateUI(false);
+            };
+
+            socket.onerror = function(error) {
+                log(`Error: ${error.message || 'Unknown error occurred'}`);
+                updateUI(false);
+            };
+        }
+
+        function disconnect() {
+            if (socket) {
+                log('Disconnecting...');
+                socket.close();
+            }
+        }
+
+        function sendMessage() {
+            if (socket && socket.readyState === WebSocket.OPEN) {
+                const message = `Test message at ${new Date().toLocaleTimeString()}`;
+                socket.send(JSON.stringify({ type: 'test', message }));
+                log(`Sent: ${message}`);
+            } else {
+                log('Cannot send message: Not connected to WebSocket server');
+            }
+        }
+
+        // Event listeners
+        connectBtn.addEventListener('click', connect);
+        disconnectBtn.addEventListener('click', disconnect);
+        sendBtn.addEventListener('click', sendMessage);
+
+        log('Ready to test WebSocket connection. Click "Connect" to begin.');
+    </script>
+</body>
+</html>
