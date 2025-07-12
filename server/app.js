@@ -8,7 +8,9 @@ import { WebSocketServer } from 'ws';
 import http from 'http';
 import { networkInterfaces } from 'os';
 import jwt from 'jsonwebtoken';
+import { Server } from 'socket.io';
 import User from './models/User.js';
+import Interview from './models/Interview.js';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -50,15 +52,19 @@ mongoose.connect(process.env.MONGO_URI, {
   process.exit(1);
 });
 
+// Import routes
 import authRoutes from './routes/authRoutes.js';
-import codeRoutes from './routes/codeRoutes.js';
+import questionRoutes from './routes/questions.js';
 import submissionRoutes from './routes/submissionRoutes.js';
-import questions from './routes/questions.js';
+import codeRoutes from './routes/codeRoutes.js';
+import aiFeedbackRoutes from './routes/aiFeedback.js';
+import interviewRoutes from './routes/interviewRoutes.js';
 
 app.use('/api/auth', authRoutes);
 app.use('/api/execute', codeRoutes);
 app.use('/api/submit', submissionRoutes);
-app.use('/api/questions', questions);
+app.use('/api/questions', questionRoutes);
+app.use('/api/interviews', interviewRoutes);
 
 if (process.env.NODE_ENV === 'production') {
   app.use(express.static(path.join(__dirname, '../client/build')));
@@ -67,7 +73,114 @@ if (process.env.NODE_ENV === 'production') {
   });
 }
 
+// Create HTTP server
 const server = http.createServer(app);
+
+// Set up Socket.io with CORS
+const io = new Server(server, {
+  cors: {
+    origin: whitelist,
+    methods: ['GET', 'POST'],
+    credentials: true
+  },
+  path: '/socket.io/'
+});
+
+// Socket.io connection handling
+const interviewRooms = new Map();
+
+io.on('connection', (socket) => {
+  console.log('New client connected:', socket.id);
+
+  // Join a room
+  socket.on('join_room', async ({ roomId, userId }) => {
+    try {
+      // Verify room exists and user is a participant
+      const interview = await Interview.findOne({ roomId });
+      if (!interview || !interview.participants.includes(userId)) {
+        socket.emit('error', { message: 'Not authorized to join this room' });
+        return;
+      }
+
+      // Join the room
+      await socket.join(roomId);
+      
+      // Store room info
+      if (!interviewRooms.has(roomId)) {
+        interviewRooms.set(roomId, new Set());
+      }
+      interviewRooms.get(roomId).add(socket.id);
+
+      // Notify others in the room
+      socket.to(roomId).emit('user_joined', { userId, socketId: socket.id });
+      
+      // Send current code and language to the new user
+      socket.emit('code_update', {
+        code: interview.code,
+        language: interview.language
+      });
+
+    } catch (error) {
+      console.error('Error joining room:', error);
+      socket.emit('error', { message: 'Error joining room' });
+    }
+  });
+
+  // Handle code updates
+  socket.on('code_update', async ({ roomId, code, language, userId }) => {
+    try {
+      // Verify user is in the room
+      const interview = await Interview.findOne({ roomId });
+      if (!interview || !interview.participants.includes(userId)) {
+        return;
+      }
+
+      // Update the code in the database
+      interview.code = code;
+      if (language) {
+        interview.language = language;
+      }
+      await interview.save();
+
+      // Broadcast to other users in the room
+      socket.to(roomId).emit('code_update', { code, language });
+    } catch (error) {
+      console.error('Error updating code:', error);
+    }
+  });
+
+  // Handle WebRTC signaling
+  socket.on('webrtc_offer', ({ to, offer }) => {
+    socket.to(to).emit('webrtc_offer', { offer, from: socket.id });
+  });
+
+  socket.on('webrtc_answer', ({ to, answer }) => {
+    socket.to(to).emit('webrtc_answer', { answer, from: socket.id });
+  });
+
+  socket.on('webrtc_ice_candidate', ({ to, candidate }) => {
+    socket.to(to).emit('webrtc_ice_candidate', { candidate, from: socket.id });
+  });
+
+  // Handle disconnection
+  socket.on('disconnect', () => {
+    console.log('Client disconnected:', socket.id);
+    
+    // Clean up room info
+    for (const [roomId, clients] of interviewRooms.entries()) {
+      if (clients.has(socket.id)) {
+        clients.delete(socket.id);
+        if (clients.size === 0) {
+          interviewRooms.delete(roomId);
+        } else {
+          // Notify other users in the room
+          socket.to(roomId).emit('user_left', { socketId: socket.id });
+        }
+        break;
+      }
+    }
+  });
+});
 
 const wss = new WebSocketServer({ 
   server, 
