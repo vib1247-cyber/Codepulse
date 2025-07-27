@@ -19,36 +19,94 @@ dotenv.config({ path: path.resolve(__dirname, '.env') });
 const app = express();
 const PORT = process.env.PORT || 4000;
 
-const whitelist = ['http://localhost:3000', 'http://localhost:3001', 'http://localhost:3002', 'http://localhost:3000'];
-const corsOptions = {
-  origin: function (origin, callback) {
-    if (!origin || whitelist.indexOf(origin) !== -1) {
-      callback(null, true);
-    } else {
-      callback(new Error('Not allowed by CORS'));
-    }
-  },
-  credentials: true,
-  methods: ['GET', 'POST', 'PUT', 'DELETE', 'PATCH', 'OPTIONS'],
-  allowedHeaders: ['Content-Type', 'Authorization', 'X-Requested-With'],
-  exposedHeaders: ['Content-Range', 'X-Content-Range'],
-  maxAge: 600
-};
+// CORS configuration
+const allowedOrigins = [
+  'http://localhost:3000',
+  'http://localhost:3001',
+  'http://localhost:3002',
+  'http://127.0.0.1:3000',
+  'http://127.0.0.1:3001',
+  'http://127.0.0.1:3002',
+  'http://192.168.31.59:3000',
+  'http://192.168.31.59:3001',
+  'http://192.168.31.59:3002',
+  'http://localhost:4000',
+  'http://127.0.0.1:4000'
+];
 
-// Apply CORS middleware
-app.use(cors(corsOptions));
-app.options('*', cors(corsOptions)); // Enable pre-flight for all routes
+// Enable CORS for all routes
+app.use((req, res, next) => {
+  const origin = req.headers.origin;
+  
+  // Allow requests with no origin (like mobile apps, curl, etc.)
+  if (!origin || allowedOrigins.includes(origin)) {
+    res.header('Access-Control-Allow-Origin', origin || '*');
+    res.header('Access-Control-Allow-Methods', 'GET, POST, PUT, DELETE, PATCH, OPTIONS');
+    res.header('Access-Control-Allow-Headers', 'Origin, X-Requested-With, Content-Type, Accept, Authorization, X-CSRF-Token, x-request-timestamp');
+    res.header('Access-Control-Allow-Credentials', 'true');
+    res.header('Access-Control-Expose-Headers', 'Content-Range, X-Content-Range, Set-Cookie');
+    res.header('Access-Control-Max-Age', '600');
+    
+    // Handle preflight requests
+    if (req.method === 'OPTIONS') {
+      return res.status(200).end();
+    }
+  } else {
+    console.log('CORS blocked for origin:', origin);
+    return res.status(403).json({ 
+      success: false, 
+      message: 'Not allowed by CORS' 
+    });
+  }
+  
+  next();
+});
+
+// CORS is now handled by the custom middleware above
 app.use(express.json({ limit: '50mb' }));
 app.use(express.urlencoded({ limit: '50mb', extended: true }));
 
-mongoose.connect(process.env.MONGO_URI, {
-  useNewUrlParser: true,
-  useUnifiedTopology: true
-})
-.then(() => console.log('✅ MongoDB connected'))
-.catch(err => {
-  console.error('❌ MongoDB connection error:', err);
-  process.exit(1);
+// Database connection with retry logic
+const connectWithRetry = () => {
+  console.log('Attempting to connect to MongoDB...');
+  return mongoose.connect(process.env.MONGO_URI, {
+    useNewUrlParser: true,
+    useUnifiedTopology: true,
+    serverSelectionTimeoutMS: 5000,  // Timeout after 5s instead of 30s
+    socketTimeoutMS: 45000,         // Close sockets after 45s of inactivity
+    family: 4                       // Use IPv4, skip trying IPv6
+  })
+  .then(() => console.log('✅ MongoDB connected successfully'))
+  .catch(err => {
+    console.error('❌ MongoDB connection error:', err.message);
+    console.log('Retrying connection in 5 seconds...');
+    setTimeout(connectWithRetry, 5000);
+  });
+};
+
+// Initial connection
+connectWithRetry();
+
+// Handle connection events
+mongoose.connection.on('connected', () => {
+  console.log('Mongoose connected to DB');
+});
+
+mongoose.connection.on('error', (err) => {
+  console.error('Mongoose connection error:', err);
+});
+
+mongoose.connection.on('disconnected', () => {
+  console.log('Mongoose disconnected from DB');
+  // Attempt to reconnect after a delay
+  setTimeout(connectWithRetry, 5000);
+});
+
+// Handle process termination
+process.on('SIGINT', async () => {
+  await mongoose.connection.close();
+  console.log('Mongoose connection closed through app termination');
+  process.exit(0);
 });
 
 // Import routes
@@ -77,7 +135,7 @@ const server = http.createServer(app);
 // Set up Socket.io with CORS
 const io = new Server(server, {
   cors: {
-    origin: whitelist,
+    origin: allowedOrigins,
     methods: ['GET', 'POST'],
     credentials: true
   },
