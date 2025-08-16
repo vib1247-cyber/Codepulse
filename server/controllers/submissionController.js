@@ -1,7 +1,7 @@
 import Submission from '../models/Submission.js';
 import Question from '../models/Question.js';
 import ErrorResponse from '../utils/errorResponse.js';
-import { executeCode } from './codeController.js';
+import { executeWithJudge0 } from '../utils/judge0.js';
 
 // Create a new submission
 export const createSubmission = async (req, res, next) => {
@@ -36,26 +36,28 @@ export const createSubmission = async (req, res, next) => {
       for (const testCase of testCases) {
         try {
           const { input, expectedOutput } = testCase;
+          const serializedInput = typeof input === 'string' ? input : JSON.stringify(input ?? '');
+
+          // Execute the code with the test case input using Judge0 utility
+          const exec = await executeWithJudge0(code, language, serializedInput);
+          const actualOutput = (exec.output || '').replace(/\x00/g, '').trim();
+          const expectedTrim = (typeof expectedOutput === 'string'
+            ? expectedOutput
+            : JSON.stringify(expectedOutput ?? '')).replace(/\x00/g, '').trim();
           
-          // Execute the code with the test case input
-          const { output: actualOutput, executionTime, error } = await executeCode({
-            body: { language, code, input },
-            user: { id: userId }
-          });
-          
-          totalExecutionTime += parseFloat(executionTime || 0);
-          
-          // Check for errors
-          if (error) {
+          totalExecutionTime += parseFloat(exec.executionTime || 0);
+
+          // Check for errors from executor
+          if (exec.error && exec.error.trim()) {
             verdict = 'Runtime Error';
-            executionOutput = `Runtime Error: ${error}`;
+            executionOutput = `Runtime Error: ${exec.error}`;
             break;
           }
           
-          // Compare the actual output with the expected output
-          if (actualOutput && actualOutput.trim() !== expectedOutput.trim()) {
+          // Compare actual vs expected
+          if (expectedTrim && actualOutput !== expectedTrim) {
             verdict = 'Wrong Answer';
-            executionOutput = `Expected: ${expectedOutput}\nGot: ${actualOutput}`;
+            executionOutput = `Expected: ${expectedTrim}\nGot: ${actualOutput}`;
             break;
           }
           

@@ -1,2 +1,94 @@
-server/.env
+# Dependencies
+node_modules/
+/.pnp
+.pnp.js
+
+# Testing
+/coverage
+
+# Production
+/build
+/dist
+
+# Environment variables
 .env
+.env.local
+.env.development.local
+.env.test.local
+.env.production.local
+
+# Debug logs
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+
+# Editor directories and files
+.idea/
+.vscode/
+*.suo
+*.ntvs*
+*.njsproj
+*.sln
+*.sw?
+
+# Server specific
+server/uploads/
+
+# Client specific
+client/build/
+
+# System Files
+.DS_Store
+Thumbs.db
+
+# Local development
+.cache/
+.vercel
+.next/
+
+# Logs
+logs
+*.log
+
+# Optional npm cache directory
+.npm
+
+# Optional eslint cache
+.eslintcache
+
+# Optional REPL history
+.node_repl_history
+
+# Output of 'npm pack'
+*.tgz
+
+# Yarn Integrity file
+.yarn-integrity
+
+# dotenv environment variables file
+.env*.local
+
+# parcel-bundler cache (https://parceljs.org/)
+.parcel-cache/
+
+# Next.js build output
+.next
+out
+
+# Production
+build
+
+# Misc
+*.pem
+*.p8
+*.key
+*.crt
+*.csr
+*.cer
+*.srl
+*.p7b
+*.p7c
+*.p7s
+*.p12
+*.pfx
+*.der
