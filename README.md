@@ -100,7 +100,9 @@ This project is licensed under the MIT License - see the [LICENSE](LICENSE) file
 
 ## Acknowledgments
 
+- [Monaco Editor](https://microsoft.github.io/monaco-editor/) - The code editor that powers VS Code
 - [Judge0](https://judge0.com/) - For the code execution API
 - [Material-UI](https://material-ui.com/) - For the UI components
 - [MongoDB](https://www.mongodb.com/) - For the database
+- [Express](https://expressjs.com/) - For the backend framework
 - [React](https://reactjs.org/) - For the frontend library
